@@ -3,6 +3,7 @@ const sharp = require("sharp");
 const multer = require("multer");
 const fs = require("fs");
 const convertToPdf = require("docx-pdf");
+const PDFDocument = require("pdfkit");
 const app = express();
 
 app.use("/convert", express.static("convert"));
@@ -57,14 +58,16 @@ app.post("/convert", convert.single("files"), (req, res) => {
   if (!req.file) {
     return res.status(400).send("File not found.");
   }
+  console.log(req.file);
   const inputPath = req.file.path;
   console.log(inputPath);
   const targetFormat = req.body.convertFileType;
   console.log(targetFormat);
   const outputPath = `convert/output.${targetFormat}`;
   console.log(outputPath);
+  const ext = req.file.originalname.split(".").pop().toLowerCase();
 
-  if (targetFormat === "pdf") {
+  if (targetFormat === "pdf" && ext == "docx") {
     convertToPdf(inputPath, outputPath, function (err) {
       if (err) {
         console.error("PDF Conversion Error:", err);
@@ -77,7 +80,28 @@ app.post("/convert", convert.single("files"), (req, res) => {
         }, 10000);
       }
     });
-  } else {
+  } else if (
+    targetFormat === "pdf" &&
+    ["png", "jpg", "jpeg", "webp", "gif"].includes(ext)
+  ) {
+    const doc = new PDFDocument();
+    doc.pipe(fs.createWriteStream(outputPath));
+    doc.image(inputPath, {
+      fit: [500, 400],
+      align: "center",
+      valign: "center",
+    });
+    doc.end();
+    res.json({ filePath: `/${outputPath}` });
+    setTimeout(() => deleteFiles(inputPath, outputPath), 10000);
+  } else if (
+    targetFormat == "jpg" ||
+    targetFormat == "webp" ||
+    targetFormat == "png" ||
+    targetFormat == "gif" ||
+    targetFormat == "avif" ||
+    targetFormat == "jpeg"
+  ) {
     sharp(inputPath)
       .toFormat(targetFormat)
       .toFile(outputPath, (err) => {
