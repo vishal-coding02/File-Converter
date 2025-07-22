@@ -84,7 +84,7 @@ app.post("/convert", convert.single("files"), (req, res) => {
     targetFormat === "pdf" &&
     ["png", "jpg", "jpeg", "webp", "gif"].includes(ext)
   ) {
-    const doc = new PDFDocument();
+    const doc = new PDFDocument({ size: req.body.pdfFileSize });
     doc.pipe(fs.createWriteStream(outputPath));
     doc.image(inputPath, {
       fit: [500, 400],
