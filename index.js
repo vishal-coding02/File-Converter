@@ -1,12 +1,16 @@
 const express = require("express");
 const sharp = require("sharp");
+const cors = require("cors");
 const multer = require("multer");
 const fs = require("fs");
 const convertToPdf = require("docx-pdf");
 const PDFDocument = require("pdfkit");
 const app = express();
 
+app.use(cors());
 app.use("/convert", express.static("convert"));
+app.use("/newPdf", express.static("newpdf"));
+app.use(express.json());
 
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -54,6 +58,36 @@ const storage = multer.diskStorage({
 
 const convert = multer({ storage: storage });
 
+app.post("/newPdf", convert.single("image"), (req, res) => {
+  const text = JSON.parse(req.body.text);
+
+  if (!text.textContent) {
+    return res.status(400).json({ error: "No content provided" });
+  }
+  const imagePath = req.file?.path;
+  const outputPath = `newpdf/generated_${Date.now()}.pdf`;
+
+  const doc = new PDFDocument();
+  const writeStream = fs.createWriteStream(outputPath);
+
+  doc.pipe(writeStream);
+  if (imagePath) {
+    doc.image(imagePath, {
+      fit: [500, 400],
+      align: "center",
+      valign: "center",
+    });
+  }
+
+  doc.moveDown(1);
+
+  doc.font(text.textFont);
+  doc.text(text.textContent, { align: text.textAlign });
+  doc.end();
+  res.json({ filePath: `/${outputPath}` });
+  console.log("Newpdf created...");
+});
+
 app.post("/convert", convert.single("files"), (req, res) => {
   if (!req.file) {
     return res.status(400).send("File not found.");
@@ -95,12 +129,7 @@ app.post("/convert", convert.single("files"), (req, res) => {
     res.json({ filePath: `/${outputPath}` });
     setTimeout(() => deleteFiles(inputPath, outputPath), 10000);
   } else if (
-    targetFormat == "jpg" ||
-    targetFormat == "webp" ||
-    targetFormat == "png" ||
-    targetFormat == "gif" ||
-    targetFormat == "avif" ||
-    targetFormat == "jpeg"
+    ["jpg", "webp", "png", "gif", "avif", , "jpeg"].includes(targetFormat)
   ) {
     sharp(inputPath)
       .toFormat(targetFormat)
