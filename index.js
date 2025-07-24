@@ -1,11 +1,16 @@
 const express = require("express");
 const sharp = require("sharp");
+const cors = require("cors");
 const multer = require("multer");
 const fs = require("fs");
 const convertToPdf = require("docx-pdf");
+const PDFDocument = require("pdfkit");
 const app = express();
 
+app.use(cors());
 app.use("/convert", express.static("convert"));
+app.use("/newPdf", express.static("newpdf"));
+app.use(express.json());
 
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -53,18 +58,50 @@ const storage = multer.diskStorage({
 
 const convert = multer({ storage: storage });
 
+app.post("/newPdf", convert.single("image"), (req, res) => {
+  const text = JSON.parse(req.body.text);
+
+  if (!text.textContent) {
+    return res.status(400).json({ error: "No content provided" });
+  }
+  const imagePath = req.file?.path;
+  const outputPath = `newpdf/generated_${Date.now()}.pdf`;
+
+  const doc = new PDFDocument();
+  const writeStream = fs.createWriteStream(outputPath);
+
+  doc.pipe(writeStream);
+  if (imagePath) {
+    doc.image(imagePath, {
+      fit: [500, 400],
+      align: "center",
+      valign: "center",
+    });
+  }
+
+  doc.moveDown(1);
+
+  doc.font(text.textFont);
+  doc.text(text.textContent, { align: text.textAlign });
+  doc.end();
+  res.json({ filePath: `/${outputPath}` });
+  console.log("Newpdf created...");
+});
+
 app.post("/convert", convert.single("files"), (req, res) => {
   if (!req.file) {
     return res.status(400).send("File not found.");
   }
+  console.log(req.file);
   const inputPath = req.file.path;
   console.log(inputPath);
   const targetFormat = req.body.convertFileType;
   console.log(targetFormat);
   const outputPath = `convert/output.${targetFormat}`;
   console.log(outputPath);
+  const ext = req.file.originalname.split(".").pop().toLowerCase();
 
-  if (targetFormat === "pdf") {
+  if (targetFormat === "pdf" && ext == "docx") {
     convertToPdf(inputPath, outputPath, function (err) {
       if (err) {
         console.error("PDF Conversion Error:", err);
@@ -77,7 +114,23 @@ app.post("/convert", convert.single("files"), (req, res) => {
         }, 10000);
       }
     });
-  } else {
+  } else if (
+    targetFormat === "pdf" &&
+    ["png", "jpg", "jpeg", "webp", "gif"].includes(ext)
+  ) {
+    const doc = new PDFDocument({ size: req.body.pdfFileSize });
+    doc.pipe(fs.createWriteStream(outputPath));
+    doc.image(inputPath, {
+      fit: [500, 400],
+      align: "center",
+      valign: "center",
+    });
+    doc.end();
+    res.json({ filePath: `/${outputPath}` });
+    setTimeout(() => deleteFiles(inputPath, outputPath), 10000);
+  } else if (
+    ["jpg", "webp", "png", "gif", "avif", , "jpeg"].includes(targetFormat)
+  ) {
     sharp(inputPath)
       .toFormat(targetFormat)
       .toFile(outputPath, (err) => {
