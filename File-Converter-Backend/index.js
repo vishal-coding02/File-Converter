@@ -79,8 +79,6 @@ app.post("/newPdf", convert.single("image"), (req, res) => {
     });
   }
 
-  doc.moveDown(1);
-
   doc.font(text.textFont);
   doc.text(text.textContent, { align: text.textAlign });
   doc.end();
@@ -131,15 +129,37 @@ app.post("/convert", convert.single("files"), (req, res) => {
   } else if (
     ["jpg", "webp", "png", "gif", "avif", , "jpeg"].includes(targetFormat)
   ) {
-    sharp(inputPath)
-      .toFormat(targetFormat)
-      .toFile(outputPath, (err) => {
-        if (err) return res.status(500).send("Conversion failed");
-        res.json({ filePath: `/${outputPath}` });
-        setTimeout(() => {
-          deleteFiles(inputPath, outputPath);
-        }, 10000);
-      });
+    let imgWidth = 400;
+    let jpgImgQuality = 50;
+    let pngImgQuality = 5;
+    if (req.body.compress == "low") {
+      imgWidth = 300;
+      jpgImgQuality = 25;
+      pngImgQuality = 3;
+    } else if (req.body.compress == "medium") {
+      imgWidth = 600;
+      jpgImgQuality = 50;
+      pngImgQuality = 6;
+    } else if (req.body.compress == "high") {
+      imgWidth = 1000;
+      jpgImgQuality = 100;
+      pngImgQuality = 9;
+    }
+    let transformer = sharp(inputPath).resize({ width: imgWidth });
+
+    if (targetFormat === "jpeg" || targetFormat === "jpg") {
+      transformer = transformer.jpeg({ quality: jpgImgQuality });
+    } else if (targetFormat === "png") {
+      transformer = transformer.png({ quality: pngImgQuality });
+    }
+
+    transformer.toFormat(targetFormat).toFile(outputPath, (err) => {
+      if (err) return res.status(500).send("Conversion failed");
+      res.json({ filePath: `/${outputPath}` });
+      setTimeout(() => {
+        deleteFiles(inputPath, outputPath);
+      }, 10000);
+    });
   }
 });
 
